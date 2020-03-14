@@ -1,0 +1,227 @@
+
+import cv2
+import numpy as np
+import tensorflow as tf
+from matplotlib import pyplot as plt
+from operator import itemgetter, attrgetter
+
+
+slice_image = 1
+
+
+def prepare(img):
+    IMG_SIZE = 28
+    # image = img
+    # image = cv2.imread(img, cv2.IMREAD_GRAYSCALE)  # read in the image and convert to grayscale
+
+    image = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+    image = image.astype('float32')
+    image = image.reshape(1, 28, 28, 1)
+    # this line when input image will be white background then coz mnsit image gray scale print black background with grayscale digit
+    #    image=255-image
+    image = image / 255
+    return image  # return the image with shaping that TF wants.
+
+
+
+
+def digit_slicing (img, slice_image):
+    image = img
+    crop_image = image[25:80, 0:380]
+    gray_image = cv2.cvtColor(crop_image, cv2.COLOR_BGR2GRAY)
+    ret, thresh_image = cv2.threshold(gray_image, 127, 255, 0)
+    _, contours, _ = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    row = []
+    list = []
+    searchStart = True
+    for i in range(thresh_image.shape[0]):
+        num = 0
+        for j in range(thresh_image.shape[1]):
+            if thresh_image[i, j] > 240:
+                num = num + 1
+
+        if num > 50 and searchStart == True:
+            list.append(i)
+            searchStart = False
+        elif num < 50 and searchStart == False:
+            list.append(i - 1)
+            searchStart = True
+
+        row.append(num)
+
+    # print("List element is: ", list)
+    # print("List length is: ", len(list))
+    # print("Row is: ", row)
+
+    maxlength = 0
+
+    for i in range(len(list) - 1):
+        length = list[i + 1] - list[i]
+        if length > maxlength:
+            maxlength = length
+            startRange = list[i]
+            stopRange = list[i + 1]
+    # print("startRange: ", startRange)
+    # print("stopRange: ", stopRange)
+
+    # Finding rectangle's coordiante and removing collision rectangle
+    rects = []
+    for i in contours:
+        boundingRect = cv2.boundingRect(i)
+        x3, y3 = boundingRect[0:2]
+        x4 = x3 + boundingRect[2]
+        y4 = y3 + boundingRect[3]
+
+        if boundingRect[1] in range(startRange - 1, stopRange + 1):
+            if len(rects) == 0:
+                rects.append(boundingRect)
+            else:
+                coordinate = rects
+                collison = False
+                for j in coordinate:
+                    x1 = j[0]
+                    y1 = j[1]
+                    x2 = x1 + j[2]
+                    y2 = y1 + j[3]
+                    # print("x1, y1, x2, y2: ", x1, y1, x2, y2)
+                    if x3 and x4 in range(x1, x2 + 1):
+                        if y3 and y4 in range(y1, y2 + 1):
+                            collison = True
+                            break
+                if collison == False:
+                    rects.append(boundingRect)
+
+    def Sort(rects):
+        rects.sort(key=lambda x: x[0])
+        return rects
+
+    rects = Sort(rects)
+
+    # Draw rectangle on the Image
+    for rect in rects:
+        cv2.rectangle(crop_image, (rect[0], rect[1]), (rect[0] + rect[2], rect[1] + rect[3]), (0, 0, 255), 1)
+
+    digits = []
+
+    # update 22 start form here
+    j = 0
+    referenceDigit = {}
+    for i in range(10):
+        # print(i)
+        prefix = 'C://Users//Hasan Mahmud//Desktop//inv//Test Project//Digit slicing//resizeimages/re'
+        url = prefix + str(i) + '.jpg'
+        referenceDigit[i] = cv2.imread(url)
+        gray_image_reference=cv2.cvtColor(referenceDigit[i],cv2.COLOR_BGR2GRAY)
+        ret,thresh_image_reference=cv2.threshold(gray_image_reference,127,255,0)
+        referenceDigit[i]=thresh_image_reference
+        # j=j+1
+        # cv2.imshow("%d", referenceDigit[i])
+        # cv2.waitKey(0)
+    # Update 22 stop here
+
+    print("reference", referenceDigit[0].shape)
+
+    groupOutput = []
+
+    # Extracting Digits from image via contour's coordiantes
+    for coordinates in rects:
+        digit = thresh_image[coordinates[1]:(coordinates[1] + coordinates[3]),
+                coordinates[0]:(coordinates[0] + coordinates[2])]
+
+        if digit.shape[0] >10:
+
+            roi = cv2.resize(digit, (57, 88))
+            # print("roi",roi.shape)
+
+            cv2.imwrite("C://Users//Hasan Mahmud//Desktop//inv//Test Project//Digit slicing//resizeimages/roi.jpg",roi)
+            cv2.imshow("roi",roi)
+
+            scores = []
+
+            # loop over the reference digit name and digit ROI
+            # for (referenceDigit, digitROI) in referenceDigit.items():
+            #     # apply correlation-based template matching, take the
+            #     # score, and update the scores list
+            #     result = cv2.matchTemplate(roi, digitROI,cv2.TM_CCOEFF)
+            #     (_, score, _, _) = cv2.minMaxLoc(result)
+            #     scores.append(score)
+
+            for i in range (len(referenceDigit)):
+                result = cv2.matchTemplate(roi, referenceDigit[i], cv2.TM_CCOEFF)
+                (_, score, _, _) = cv2.minMaxLoc(result)
+                scores.append(score)
+
+            # the classification for the digit ROI will be the reference
+            # digit name with the *largest* template matching score
+            groupOutput.append(str(np.argmax(scores)))
+
+            # print("Group Output is: ",groupOutput)
+
+
+
+
+            digits.append(digit)
+    print("Group Output is: ", groupOutput)
+
+    # cv2.imwrite("test.png", digits[0])
+    # cv2.imshow("digits", digits[6])
+
+    cv2.imshow("sliceImage %d" %slice_image, crop_image)
+    cv2.waitKey(0);
+    cv2.imwrite("cropimages/sliceImage %d.jpg" %slice_image, crop_image);
+    model = tf.keras.models.load_model("Model/mode4.model")
+
+
+# # update 22 start form here
+#     j=0
+#     referenceDigit = []
+#     for i in range(10):
+#         # print(i)
+#         prefix = 'S://12th semester//Research//Test Project//Digit slicing//resizeimages/re'
+#         url =prefix+str(i)+'.jpg'
+#         # print(url)
+#         # referenceDigit cv2.imread(url);
+#         referenceDigit.append(cv2.imread(url))
+#         # j=j+1
+#         cv2.imshow("%d",referenceDigit[i])
+#         cv2.waitKey(0)
+# # Update 22 stop here
+
+
+
+
+
+    for i in range(len(digits)):
+        plt.subplot(4, 5, i + 1)
+        plt.imshow(digits[i], 'gray')
+        # plt.title('figure 2')
+        plt.xticks([])
+        plt.yticks([])
+
+    # plt.show()
+
+    # for i in range (len(digits)):
+    #     cv2.imshow('%d'%i, digits[i])
+
+    # cv2.imshow("-", digits[12])
+    # print("shape of 12 is", digits[11].shape[0])
+
+
+
+    slice_image = slice_image + 1
+    # cv2.imshow("Thresh image", thresh_image)
+    # cv2.waitKey(0)
+
+    # cv2.destroyAllWindows()
+
+
+vidcap = cv2.VideoCapture('testVideo.avi')
+for i in range(2, 8, 2):
+    image = vidcap.set(cv2.CAP_PROP_POS_MSEC, i * 60 * 1000)      # just cue to 20 sec. position
+    success, image = vidcap.read()
+    if success:
+        cv2.imwrite("cropimages/min%d.jpg" % i, image)
+        # cv2.imshow("%d" %i, image)
+        digit_slicing(image, slice_image)
+        slice_image = slice_image + 1
